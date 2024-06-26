@@ -1,4 +1,4 @@
-🤖AI Autonomous Agents
+🎯 Optimization
 =====================
 
 Brief Introduction
@@ -15,50 +15,24 @@ Basic Codes
 .. code:: python
 
     class Agent:
-        def __init__(self, config: AgentConfig):
-            self.config = config
-            self.agent_name = self.config.agent_name
-            self.agent_roles = self.config.agent_roles
-            self.agent_style = self.config.agent_style
-            self.agent_description = self.config.agent_description
-            llm_config = (
-                LLMConfig(self.config.LLM_config) if self.config.LLM_config else None
-            )
-            self.LLM = OpenAILLM(llm_config) if llm_config else None
-            if self.config.memory:
-                self.short_term_memory = (
-                    ShortTermMemory(
-                        config=self.config.memory["short_term_memory"], messages=[]
-                    )
-                    if "short_term_memory" in self.config.memory
-                    else ShortTermMemory(config={}, messages=[])
-                )
-                self.long_term_memory = (
-                    LongTermMemory(
-                        config=self.config.memory["long_term_memory"],
-                        json_path=self.config.memory["long_term_memory"].get(
-                            "json_path", f"memory/{self.agent_name}.jsonl"
-                        ),
-                        chunk_list=[],
-                    )
-                    if "long_term_memory" in self.config.memory
-                    else LongTermMemory(
-                        config={},
-                        json_path=f"memory/{self.agent_name}.jsonl",
-                        chunk_list=[],
-                    )
-                )
-            else:
-                self.short_term_memory = ShortTermMemory(config={}, messages=[])
-                self.long_term_memory = LongTermMemory(
-                    config={},
-                    json_path=f"memory/{self.agent_name}.jsonl",
-                    chunk_list=[],
-                )
-            self.toolkit = (
-                Toolkit.from_config(self.config.toolkit) if self.config.toolkit else None
-            )
-            self.is_user = self.config.is_user
+        """
+        Auto agent, input the JSON of SOP.
+        """
+        
+        # Agent should have args: agents,states
+        def __init__(self, name, agent_state_roles, **kwargs) -> None:
+            self.state_roles = agent_state_roles
+            self.name = name
+            self.style = kwargs["style"]
+            self.LLMs = kwargs["LLMs"]
+            self.LLM = None
+            self.is_user = kwargs["is_user"]
+            self.begins = kwargs["begins"] if "begins" in kwargs else False
+            self.current_role = ""
+            self.long_term_memory = []
+            self.short_term_memory = ""
+            self.current_state = None
+            self.first_speak = True
 
     # Remark:
     # state_roles(dict): The agent’s role in different state.

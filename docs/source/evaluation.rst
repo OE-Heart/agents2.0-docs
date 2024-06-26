@@ -1,281 +1,356 @@
-Evaluation
+📈 Evaluation
 =====================
 
-Brief Introduction
+Case
 ------------------
-
-🤖 AI Autonomous Agents are intelligent entities capable of perceiving their environment, making decisions, and taking actions without direct human intervention. As human society rapidly develops, AI Autonomous Agents find applications in diverse circumstances.
-
-Demonstrations & Attributes
----------------------------
-
-Basic Codes
-~~~~~~~~~~
 
 .. code:: python
 
-    class Agent:
-        """
-        Auto agent, input the JSON of SOP.
-        """
-        
-        # Agent should have args: agents,states
-        def __init__(self, name, agent_state_roles, **kwargs) -> None:
-            self.state_roles = agent_state_roles
-            self.name = name
-            self.style = kwargs["style"]
-            self.LLMs = kwargs["LLMs"]
-            self.LLM = None
-            self.is_user = kwargs["is_user"]
-            self.begins = kwargs["begins"] if "begins" in kwargs else False
-            self.current_role = ""
-            self.long_term_memory = []
-            self.short_term_memory = ""
-            self.current_state = None
-            self.first_speak = True
+    class Case:
+        def __init__(self, json_data: dict):
+            """
+            Initializes a Case object from a JSON dict.
 
-    # Remark:
-    # state_roles(dict): The agent’s role in different state.
-    # is_user: True if the agent is a user operation, False otherwise.
-    # long_term_memory: The Agent's historical conversation records, in which the conversations of other agents are informed in the form of historical records.
-    # short_term_memory: The Agent’s short-term memory is a summary of its past historical memory.
+            Args:
+                json_data (dict): The JSON data to initialize the Case object.
+            """
+            # raw data, it will not be saved when dump
+            self.raw_data = json_data
 
-Methods
-~~~~~~~
+            self.case_id: str = json_data["case_id"]
+            self.case_name: str = json_data["case_name"]
 
-From_config
+            self.task_id: str = json_data["task_id"]
+            self.task_description = json_data["task_description"]
+
+            self.function_ids: str = json_data["function_ids"]
+            self.KB_id: str = json_data["KB_id"]
+
+            self.input: dict = json_data["input"]
+            self.ground_truth: dict = json_data.get("ground_truth")
+
+            # fields that not available until they are run
+            self.result: dict = json_data.get("result", {})  # 客户期望的直接的输出结果
+            self.trajectory: Trajectory = Trajectory.load_from_json(
+                json_data.get("trajectory", [])
+            )
+
+            # fields that not available until they are evaluated or optimized
+            self.dataset_eval: DatasetEvaluation = DatasetEvaluation(
+                **json_data.get("dataset_eval", {})
+            )  # Dataset evaluation results
+            self.loss: CaseLoss = CaseLoss(**json_data.get("loss", {}))  # 评估结果
+            self.sop_suggestion: SOPSuggestion = SOPSuggestion(
+                **json_data.get("sop_suggestion", {})
+            )  # Suggestions for SOP optimization
+
+Read batch from json
 ~~~~~~~~~~~
 
 .. code:: python
 
     @classmethod
-    def from_config(cls, config_path):
+    def read_batch_from_json(cls, json_path):
         """
-        Initialize agents based on json file
-        Return:
-        agents(dict): key:agent_name;value:class(Agent)
-        names_to_roles(dict): key:state_name  value:(dict; (key:agent_name ; value:agent_role))
-        roles_to_names(dict): key:state_name  value:(dict; (key:agent_role ; value:agent_name))
+        Reads a batch of cases from a JSON file and returns a list of Case objects.
+
+        Args:
+            json_path (str): The path to the JSON file containing the batch of cases.
+
+        Returns:
+            list: A list of Case objects.
         """
-        with open(config_path) as f:
-            config = json.load(f)
+        with open(json_path, encoding="utf-8") as f:
+            contents = json.load(f)
+        return [cls(content) for content in contents]
 
-        roles_to_names = {}
-        names_to_roles = {}
-        agents = {}
-        user_names = json.loads(os.environ["User_Names"]) if "User_Names" in os.environ else []
-        for agent_name, agent_dict in config["agents"].items():
-            agent_state_roles = {}
-            agent_LLMs = {}
-            agent_begins = {}
-            for state_name, agent_role in agent_dict["roles"].items():
-
-                agent_begins[state_name] = {}
-
-                if state_name not in roles_to_names:
-                    roles_to_names[state_name] = {}
-                if state_name not in names_to_roles:
-                    names_to_roles[state_name] = {}
-                roles_to_names[state_name][agent_role] = agent_name
-                names_to_roles[state_name][agent_name] = agent_role
-                agent_state_roles[state_name] = agent_role
-                current_state = config["states"][state_name]
-
-                current_state_begin_role = current_state["begin_role"] if "begin_role" in current_state else current_state["roles"][0]
-                agent_begins[state_name]["is_begin"] = current_state_begin_role==agent_role if "begin_role" in current_state else False
-                agent_begins[state_name]["begin_query"] = current_state["begin_query"] if "begin_query" in current_state else " "
-
-                LLM_type = (
-                    current_state["agent_states"][agent_role]["LLM_type"]
-                    if "LLM_type" in current_state["agent_states"][agent_role]
-                    else "OpenAI"
-                )
-                if LLM_type == "OpenAI":
-                    if "LLM" in current_state["agent_states"][agent_role]:
-                        agent_LLMs[state_name] = OpenAILLM(
-                            **current_state["agent_states"][agent_role]["LLM"]
-                        )
-                    else:
-                        agent_LLMs[state_name] = OpenAILLM(model="gpt-3.5-turbo-16k-0613", temperature=0.3, log_path=f"logs/{agent_name}")
-            agents[agent_name] = cls(
-                agent_name,
-                agent_state_roles,
-                LLMs=agent_LLMs,
-                is_user=agent_name in user_names,
-                style=agent_dict["style"],
-                begins=agent_begins
-            )
-        assert len(config["agents"].keys()) != 2 or (roles_to_names[config["root"]][config["states"][config["root"]]["begin_role"]] not in user_names and "begin_query" in config["states"][config["root"]]), "In a single-agent scenario, there must be an opening statement and it must be the agent"
-        return agents, roles_to_names, names_to_roles
-
-    # Remark:
-    # The from_config method starts the agent according to the given attributes and data.
-
-Act
-~~~
+Read single from json
+~~~~~~~~~~~
 
 .. code:: python
 
-    def act(self):
+    @classmethod
+    def read_single_from_json(cls, json_path):
         """
-        return actions by the current state
+        Reads a single case from a JSON file and returns a Case object.
+
+        Args:
+            json_path (str): The path to the JSON file containing the single case.
+
+        Returns:
+            Case: A Case object.
         """
-        current_state = self.current_state
-        system_prompt, last_prompt, res_dict = self.compile()
-        chat_history = self.long_term_memory
+        with open(json_path, encoding="utf-8") as f:
+            content = json.load(f)
+        return cls(content)
 
-        current_LLM = self.LLMs[current_state.name]
-
-        response = current_LLM.get_response(
-            chat_history, system_prompt, last_prompt, stream=True
-        )
-        return response, res_dict
-
-    # Remark:
-    # The act method generates and outputs the response of the Agent. Detailed explanations on particular attributes will be shown afterwards.
-
-Step
-~~~~
+Get dict for loss calculation
+~~~~~~~~~~~
 
 .. code:: python
 
-    def step(self, current_state, environment, input):
+    def get_dict_for_loss_calculation(self, keys: list):
         """
-        return actions by current state and environment
+        Get information needed for backward and training processes.
+
+        Args:
+            keys (list): The list of keys for the required information.
+
+        Returns:
+            dict: A dictionary containing the required information.
         """
-        current_state.chat_nums += 1
-        state_begin = current_state.is_begin
-        agent_begin = self.begins[current_state.name]["is_begin"]
-        self.begins[current_state.name]["is_begin"] = False
-        current_state.is_begin = False
-
-        self.current_state = current_state
-        # 先根据当前环境更新信息
-        # First update the information according to the current environment
-
-        response = " "
-        res_dict = {}
-
-        if self.is_user:
-            response = f"{self.name}:{input}"
-        else:
-            if len(environment.shared_memory["long_term_memory"]) > 0:
-                current_history = self.observe(environment)
-                self.long_term_memory.append(current_history)
-            if agent_begin:
-                response = (char for char in self.begins[current_state.name]["begin_query"])
-            else:
-                response, res_dict = self.act()
-
-        action_dict = {
-            "response": response,
-            "res_dict": res_dict,
-            "role": self.state_roles[current_state.name],
-            "name": self.name,
-            "state_begin": state_begin,
-            "agent_begin": agent_begin,
-            "is_user": self.is_user
+        allowed_keys = {
+            "result",
+            "ground_truth",
+            "history",
+            "score",
+            "score_info",
+            "task_description",
+            "f1",
+            "f1_info",
         }
-        return Action(**action_dict)
+        for key in keys:
+            if key not in allowed_keys:
+                print(f"Warning: 传入了不支持的key: {key}, 处理时会跳过，支持的key有{allowed_keys}")
 
-    # Remark:
-    # Closely related to the act method, the step method updates the current circumstance and then returns the response of an Agent. Detailed explanations on particular attributes will be shown afterwards.
+        ret_dict = {}
+        if "result" in keys:
+            ret_dict["result"] = self.result
+        if "ground_truth" in keys:
+            ret_dict["ground_truth"] = self.ground_truth
+        if "history" in keys:
+            # History contains all interaction records
+            ret_dict["history"] = (
+                self.trajectory.states[-1]
+                .environment.shared_memory["short_term_memory"]
+                .memory
+            )
+        if "score" in keys:
+            # score will use the dataset evaluation result
+            # the score info is the description of the metric which is stored in dataset
+            ret_dict["score"] = self.dataset_eval.score
+            ret_dict["score_info"] = self.dataset_eval.metric_description
+        if "task_description" in keys:
+            ret_dict["task_description"] = self.task_description
+        return ret_dict
 
-Compile
-~~~~~~~
+Get dict for node optimizer
+~~~~~~~~~~~
 
 .. code:: python
 
-    def compile(self):
+    def get_dict_for_node_optimizer(self, node_name: str, variable_names):
         """
-        get prompt from state depend on your role
-        Return:
-        system_prompt: system_prompt for agent's LLM
-        last_prompt: last_prompt for agent's LLM
-        res_dict(dict): Other return from tool component. For example: search engine results
+        Get information for the NodeOptimizer.
+
+        Args:
+            node_name (str): The name of the node.
+            variable_names (list): The list of variable names required by the NodeOptimizer.
+
+        Returns:
+            dict: A dictionary containing the required information for the NodeOptimizer.
         """
-        current_state = self.current_state
-        self.current_roles = self.state_roles[current_state.name]
-        current_state_name = current_state.name
-        self.LLM = self.LLMs[current_state_name]
-        components = current_state.components[self.state_roles[current_state_name]]
 
-        system_prompt = self.current_state.environment_prompt
-        last_prompt = ""
+        def get_role_chat(cur_node_name):
+            chat_str = ""
+            for state in self.trajectory.states:
+                if state.node.node_name != cur_node_name:
+                    continue
+                action = state.action
+                chat_str += action.agent_role + " : " + action.content + "\n"
+            return chat_str
 
-        res_dict = {}
-        for component in components.values():
-            if isinstance(component, (OutputComponent, LastComponent)):
-                last_prompt = last_prompt + "\n" + component.get_prompt(self)
-            elif isinstance(component, PromptComponent):
-                system_prompt = (
-                    system_prompt + "\n" + component.get_prompt(self)
+        ret_dict = {}
+        if "previous_node_summary" in variable_names:
+            # Get the summary of the previous node
+            if self.trajectory.states[0].node.node_name == node_name:
+                ret_dict["previous_node_summary"] = "You are the first node."
+            else:
+                for idx in range(len(self.trajectory.states)):
+                    if self.trajectory.states[idx + 1].node.node_name == node_name:
+                        # idx corresponds to the last state of the previous node
+                        last_state = self.trajectory.states[idx]
+                        if not last_state.node_eval or not last_state.node_eval.summary:
+                            # no summary, use role chat
+                            ret_dict["previous_node_summary"] = get_role_chat(last_state.node.node_name)
+                        else:
+                            ret_dict["previous_node_summary"] = last_state.node_eval.summary
+                        break
+
+        # Iterate through all states to get the role's output information
+        if "role_chat" in variable_names:
+            ret_dict["role_chat"] = get_role_chat(node_name)
+        return ret_dict
+
+Get dict for sop optimizer
+~~~~~~~~~~~
+
+.. code:: python
+
+    def get_dict_for_sop_optimizer(self, need_variable_names):
+        """
+        Generate the dictionary for the SOP optimizer.
+
+        Args:
+            need_variable_names (list): The list of variable names required by the SOP optimizer.
+
+        Returns:
+            dict: A dictionary containing the required information for the SOP optimizer.
+        """
+
+        ret_dict = {}
+        if "suggestion" in need_variable_names:
+            ret_dict["suggestion"] = self.sop_suggestion.suggestion
+        if "run_instance_summary" in need_variable_names:
+            # Only the node name and the summary of each node are needed
+            ret_str = ""
+            for idx, state in enumerate(self.trajectory.states):
+                if (idx == len(self.trajectory.states) - 1
+                        or state.node.node_name != self.trajectory.states[idx + 1].node.node_name):
+                    # Process at the last state of each node
+                    ret_str += f"- {state.node.node_name}: {state.node_eval.summary}\n\n"
+
+            ret_dict["run_instance_summary"] = ret_str
+        if "run_instance_for_suggestion" in need_variable_names:
+            # When needing to get suggestions via prompt, specific information is required
+            ret_dict["run_instance_for_suggestion"] = self.sop_suggestion.suggestion
+            ret_str = ""
+            for idx, state in enumerate(self.trajectory.states):
+                ret_str += (
+                        state.node.node_name + ": " + state.action.agent_role + ": " + state.action.content + "\n\n"
                 )
-            elif isinstance(component, ToolComponent):
-                response = component.func(self)
-                if "prompt" in response and response["prompt"]:
-                    last_prompt = last_prompt + "\n" + response["prompt"]
-                res_dict.update(response)
+            ret_dict["run_instance_for_suggestion"] = ret_str
+        if "loss_info" in need_variable_names:
+            ret_dict["loss_info"] = f"score: {self.loss.score}\nscore_info: {self.loss.score_info}"
 
-        name = self.name
-        last_prompt = eval(Agent_last_prompt)
-        return system_prompt, last_prompt, res_dict
+        if len(ret_dict) == 0:
+            print(
+                f"Warning: The passed need_variable_names {need_variable_names} do not contain suggestion, run_instance_summary, or run_instance_for_suggestion."
+            )
+        return ret_dict
 
-    # Remark:
-    # The Compile method reaches for the current role and returns the action of a certain agent state.
+CaseLoss
+------------------
 
-Observe
+.. code:: python
+
+    class CaseLoss:
+        """
+        The CaseLoss class is used to record the loss information of a case. It functions similarly to a dictionary,
+        but is written as a class for convenience.
+        """
+
+        def __init__(self, **kwargs):
+            """
+            Initializes the evaluation results.
+
+            Args:
+                **kwargs: Arbitrary keyword arguments for initializing the evaluation results.
+            """
+            self.prompt = kwargs.get("prompt", "")
+            self.response = kwargs.get("response", "")
+            self.requirement_for_previous = kwargs.get("requirement_for_previous", "")
+            self.score: float = kwargs.get("score", 0)
+            self.score_info: str = kwargs.get("score_info", "")
+
+Update
 ~~~~~~~
 
 .. code:: python
 
-    def observe(self):
+    def update(self, **kwargs):
         """
-        Update one's own memory according to the current environment, including: updating short-term memory; updating long-term memory
+        Updates the evaluation results.
+
+        Args:
+            **kwargs: Arbitrary keyword arguments for updating the evaluation results.
         """
-        return self.environment._observe(self)
+        self.prompt = kwargs.get("prompt", self.prompt)
+        self.response = kwargs.get("response", self.response)
+        self.requirement_for_previous = kwargs.get("requirement_for_previous", self.requirement_for_previous)
+        self.score = float(kwargs.get("score", self.score))
+        self.score_info = kwargs.get("score_info", self.score_info)
 
-    # Remark:
-    # The Observe method is the core method of an agent. It updates and reads the current environment, including the chatting history and the basic information, and returns particular actions for the agent.
-
-Update_memory
-~~~~~~~~~~~~~
+DatasetEvaluation
+------------------
 
 .. code:: python
 
-    def update_memory(self, memory):
-        self.long_term_memory.append(
-            {"role": "assistant", "content": memory.content}
+    class DatasetEvaluation:
+        """
+        The DatasetEvaluation class is used to record the evaluation results of a dataset.
+        It functions similarly to a dictionary, but is written as a class for convenience.
+        """
+
+        def __init__(self, **kwargs):
+            """
+            Initializes the evaluation results.
+
+            Args:
+                **kwargs: Arbitrary keyword arguments for initializing the evaluation results.
+            """
+            self.score: float = kwargs.get("score", 0)
+            self.metric_name: str = kwargs.get("metric_name", "")
+            self.metric_description: str = kwargs.get("metric_description", "")
+            self.standard_eval_result: dict = kwargs.get("standard_eval_result", {})
+        
+Update
+~~~~~~~
+
+.. code:: python
+
+    def update(self, **kwargs):
+        """
+        Updates the evaluation results.
+
+        Args:
+            **kwargs: Arbitrary keyword arguments for updating the evaluation results.
+        """
+        self.score: float = float(kwargs.get("score", self.score))
+        self.metric_name: str = kwargs.get("metric_name", self.metric_name)
+        self.metric_description: str = kwargs.get(
+            "metric_description", self.metric_description
+        )
+        self.standard_eval_result: dict = kwargs.get(
+            "standard_eval_result", self.standard_eval_result
         )
 
-        MAX_CHAT_HISTORY = eval(os.environ["MAX_CHAT_HISTORY"])
-        environment = self.environment
-        current_chat_history_idx = environment.current_chat_history_idx if environment.environment_type == "competive" else 0
+SOPSuggestion
+------------------
 
-        current_long_term_memory = environment.shared_memory["long_term_memory"][current_chat_history_idx:]
-        last_conversation_idx = environment._get_agent_last_conversation_idx(self, current_long_term_memory)
-        if len(current_long_term_memory) - last_conversation_idx >= MAX_CHAT_HISTORY:
-            current_state = self.current_state
-            current_role = self.state_roles[current_state.name]
-            current_component_dict = current_state.components[current_role]
+.. code:: python
 
-            # get chat history from new conversation
-            conversations = environment._get_agent_new_memory(self, current_long_term_memory)
+    class SOPSuggestion:
+        """
+        The SOPSuggestion class is used to record the suggestion information for SOP.
+        It functions similarly to a dictionary, but is written as a class for convenience.
+        """
 
-            # get summary
-            summary_prompt = (
-                current_state.summary_prompt[current_role]
-                if current_state.summary_prompt
-                else f"""your name is {self.name}, your role is{current_component_dict["style"].role},your task is {current_component_dict["task"].task}.\n"""
-            )
-            summary_prompt = eval(Agent_summary_system_prompt)
-            summary = self.LLMs[current_state.name].get_response(None, summary_prompt, stream=False)
-            self.short_term_memory = summary
+        def __init__(self, **kwargs):
+            """
+            Initializes the SOP suggestion information.
 
-    # Remark:
-    # The update_memory method is responsible for updating its long-term memory and short-term memory according to the environment. Every time it is more than a certain number of rounds since the last speech of the agent, it will be summarized to obtain short-term memory.
+            Args:
+                **kwargs: Arbitrary keyword arguments for initializing the SOP suggestion information.
+            """
+            self.prompt = kwargs.get("prompt", "")
+            self.response = kwargs.get("response", "")
+            self.suggestion = kwargs.get("suggestion", "")
+            self.analyse = kwargs.get("analyse", "")
 
-Examples
-~~~~~~~~
+Update
+~~~~~~~
 
-🌐 We provide various types of Agents in our QuickStart part. You can also prepare your OWN Agent in a customized style! 🚀
+.. code:: python
+
+    def update(self, **kwargs):
+        """
+        Updates the SOP suggestion information.
+
+        Args:
+            **kwargs: Arbitrary keyword arguments for updating the SOP suggestion information.
+        """
+        self.prompt = kwargs.get("prompt", self.prompt)
+        self.response = kwargs.get("response", self.response)
+        self.suggestion = kwargs.get("suggestion", self.suggestion)
+        self.analyse = kwargs.get("analyse", self.analyse)

@@ -315,8 +315,3 @@ Next
 
     # Remark:
     # The Next method determines the next state and the role that needs action based on the current situation. Detailed remarks are added to the codes.
-
-Examples
---------
-
-We provide diverse SOP Systems of various types of Agents. Get to know in our QuickStart part! 🌟
