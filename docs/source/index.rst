@@ -9,13 +9,7 @@ Here we manifest all the documentations to you, including functions and principl
 
    This project is under active development.
 
-Contents
---------
-
 .. toctree::
+   :maxdepth: 2
 
-   agent
-   SOP
-   states
-   evaluation
    optimization
