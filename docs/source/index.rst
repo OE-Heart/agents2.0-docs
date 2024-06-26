@@ -12,4 +12,8 @@ Here we manifest all the documentations to you, including functions and principl
 .. toctree::
    :maxdepth: 2
 
+   agent
+   SOP
+   states
+   evaluation
    optimization
