@@ -4,6 +4,8 @@ Case
 Case
 ------------------
 
+The `Case` class is used to store the information of a case, including the case ID, case name, task ID, task description, function IDs, KB ID, input, ground truth, result, trajectory, dataset evaluation, loss, and SOP suggestion.
+
 .. code:: python
 
     class Case:
@@ -232,6 +234,8 @@ Get dict for sop optimizer
 CaseLoss
 ------------------
 
+The `CaseLoss` class is used to record the loss information of a case. It functions similarly to a dictionary, but is written as a class for convenience.
+
 .. code:: python
 
     class CaseLoss:
@@ -273,6 +277,8 @@ Update
 
 DatasetEvaluation
 ------------------
+
+The `DatasetEvaluation` class is used to record the evaluation results of a dataset. It functions similarly to a dictionary, but is written as a class for convenience.
 
 .. code:: python
 
@@ -317,6 +323,8 @@ Update
 
 SOPSuggestion
 ------------------
+
+The `SOPSuggestion` class is used to record the suggestion information for SOP. It functions similarly to a dictionary, but is written as a class for convenience.
 
 .. code:: python
 
