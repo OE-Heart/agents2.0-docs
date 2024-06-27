@@ -9,7 +9,7 @@ Brief Introduction
 Demonstrations & Attributes
 ---------------------------
 
-Basic Codes
+Agent
 ~~~~~~~~~~
 
 .. code:: python
@@ -229,8 +229,3 @@ Update_memory
 
     # Remark:
     # The update_memory method is responsible for updating its long-term memory and short-term memory according to the environment. Every time it is more than a certain number of rounds since the last speech of the agent, it will be summarized to obtain short-term memory.
-
-Examples
-~~~~~~~~
-
-🌐 We provide various types of Agents in our QuickStart part. You can also prepare your OWN Agent in a customized style! 🚀
