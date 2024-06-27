@@ -158,7 +158,7 @@ Trainer
             self.exceed_threshold_times = 0
 
 Get step optim order
-~~~
+-------
 
 .. code:: python
 
@@ -217,7 +217,7 @@ Get step optim order
             ]
 
 Train
-~~~
+-------
 
 .. code:: python
 
@@ -326,7 +326,7 @@ Train
         wandb.finish()
 
 Sample case list
-~~~
+-------
 
 .. code:: python
     def sample_case_list(self, sample_kind: str, from_idx: int):
@@ -414,7 +414,7 @@ Early stop
         return False
 
 Roll back
-~~~
+-------
 
 .. code:: python
 
@@ -474,4 +474,3 @@ Roll back
 
         self.logger.debug("no need to roll back")
         return solution, finished_case_list
-
